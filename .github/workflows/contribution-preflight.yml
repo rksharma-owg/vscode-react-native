@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    name: ${{ matrix.label }} / ${{ matrix.os }} / Node ${{ matrix.node }}
+    name: ${{ matrix.contribution.label }} / ${{ matrix.os }} / Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -14,28 +14,22 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: [20, 22]
-        include:
-          - label: baseline
-            os: ubuntu-latest
-            node: 20
-            sha: 5d070863c26368c0a1a07576c75e965f87010de3
-          - label: baseline
-            os: ubuntu-latest
-            node: 22
-            sha: 5d070863c26368c0a1a07576c75e965f87010de3
-        label: [cancel-new-arch]
-        sha: [0451195c753b3075498e37f0a9963e837ac28312]
+        contribution:
+          - label: output-verifier
+            sha: 41b990191447b325b327d8dbe28549895a86a8f4
+          - label: entry-point
+            sha: aa76af129a30d1c91bfdbb0f335f716dfacc17fd
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ matrix.sha }}
+          ref: ${{ matrix.contribution.sha }}
           persist-credentials: false
       - name: Verify exact tested commit
         env:
-          TEST_SHA: ${{ matrix.sha }}
+          TEST_SHA: ${{ matrix.contribution.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$TEST_SHA"
           git log -1 --format='%H %s'
@@ -94,7 +88,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: results-${{ matrix.label }}-${{ matrix.os }}-node${{ matrix.node }}
+          name: results-${{ matrix.contribution.label }}-${{ matrix.os }}-node${{ matrix.node }}
           path: |
             test/ExtensionTests.xml
             test/LocalizationTests.xml
