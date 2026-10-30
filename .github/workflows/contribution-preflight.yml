@@ -1,0 +1,103 @@
+name: Contribution preflight
+on:
+  push:
+    branches: [ci/preflight-20261030]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: ${{ matrix.label }} / ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22]
+        include:
+          - label: baseline
+            os: ubuntu-latest
+            node: 20
+            sha: 5d070863c26368c0a1a07576c75e965f87010de3
+          - label: baseline
+            os: ubuntu-latest
+            node: 22
+            sha: 5d070863c26368c0a1a07576c75e965f87010de3
+        label: [cancel-new-arch]
+        sha: [0451195c753b3075498e37f0a9963e837ac28312]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - name: Verify exact tested commit
+        env:
+          TEST_SHA: ${{ matrix.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$TEST_SHA"
+          git log -1 --format='%H %s'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Runtime versions
+        run: node --version && npm --version
+      - name: Install locked dependencies
+        id: install
+        run: npm ci
+      - name: Production build
+        id: production
+        run: npx gulp
+      - name: Development build and lint
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+      - name: Start Xvfb
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
+        run: Xvfb :99 -screen 0 1024x768x24 > /tmp/xvfb.log 2>&1 &
+      - name: Extension host tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm test --verbose
+        env:
+          DISPLAY: ':99.0'
+      - name: Localization tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm run test-localization --verbose
+        env:
+          DISPLAY: ':99.0'
+      - name: Build smoke VSIX
+        id: release
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npx gulp release --nightly --no-yarn --no-prepublish
+      - name: Stage smoke extension
+        if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        run: |
+          mkdir -p test/smoke/resources/extension
+          cp ./*.vsix test/smoke/resources/extension/
+      - name: Prepare smoke tests
+        id: smoke
+        if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        run: npm run prepare-smoke-tests
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+      - name: Prepare smoke project
+        id: project
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
+        run: npm run prepare-smoke-tests-project
+      - name: Smoke tests
+        if: ${{ !cancelled() && steps.project.outcome == 'success' }}
+        run: npm run smoke-tests --verbose
+        env:
+          DISPLAY: ':99.0'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: results-${{ matrix.label }}-${{ matrix.os }}-node${{ matrix.node }}
+          path: |
+            test/ExtensionTests.xml
+            test/LocalizationTests.xml
+            test/smoke/screenshots
+            mochawesome-report
+          if-no-files-found: warn
