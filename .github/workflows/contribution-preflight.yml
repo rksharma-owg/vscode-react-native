@@ -75,7 +75,7 @@ jobs:
         if: ${{ !cancelled() && steps.release.outcome == 'success' }}
         run: |
           mkdir -p test/smoke/resources/extension
-          cp ./*.vsix test/smoke/resources/extension/
+          test -n "$(find test/smoke/resources/extension -name '*.vsix' -print -quit)"
       - name: Prepare smoke tests
         id: smoke
         if: ${{ !cancelled() && steps.release.outcome == 'success' }}
